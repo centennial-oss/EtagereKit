@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    if: github.repository_owner == 'centennial-oss'
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      # `make build` lints, runs the unit tests on macOS, and builds for the iOS and tvOS simulators.
+      - name: Build and test
+        run: make build
