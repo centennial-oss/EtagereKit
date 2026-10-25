@@ -72,24 +72,29 @@ struct VerticalShelfRing<Card: ShelfCardContent>: View {
     private func shelves(geometry: RingGeometry, rest: ClosedRange<Int>, phase: Double) -> some View {
         let model = controller.model
         let configuration = model.configuration
+        // One snapshot for the slots and the rows: SwiftUI can update a row with a slot from the previous pass
+        // before this body runs again, so a row never indexes the live list, which may have shrunk.
+        let shelves = model.shelves
         let slots = RingMath.renderSlots(
-            itemCount: model.shelves.count,
+            itemCount: shelves.count,
             covering: RingPhase.coveredRotations(model.shelfRotationsInFlight, phase: phase), rest: rest
-        ) { model.shelves[$0].id }
+        ) { shelves[$0].id }
         let seamThickness = max(layout.metrics.seamWidth, SeamBar.increasedContrastThickness)
         return ZStack(alignment: .topLeading) {
             ForEach(slots) { slot in
-                let relative = Double(slot.virtualIndex) - phase
-                let isActive = model.isShelfActive(virtualIndex: slot.virtualIndex)
-                ShelfRowView(
-                    controller: controller, state: model.shelves[slot.ringIndex], shelfVirtualIndex: slot.virtualIndex,
-                    isActive: isActive, layout: layout, configuration: configuration,
-                    cardPhase: isActive ? phaseOverride?.cardPhase : nil,
-                    activityOverride: phaseOverride?.shelfPhase == nil ? nil : RingPhase.activity(atSlot: relative),
-                    isAccessible: rest.contains(slot.virtualIndex - model.shelfRotation),
-                    rotorNamespace: rotorNamespace, focus: $focusedShelf
-                )
-                .modifier(VerticalSlotEffect(slot: relative, geometry: geometry, rest: rest))
+                if shelves.indices.contains(slot.ringIndex) {
+                    let relative = Double(slot.virtualIndex) - phase
+                    let isActive = model.isShelfActive(virtualIndex: slot.virtualIndex)
+                    ShelfRowView(
+                        controller: controller, state: shelves[slot.ringIndex], shelfVirtualIndex: slot.virtualIndex,
+                        isActive: isActive, layout: layout, configuration: configuration,
+                        cardPhase: isActive ? phaseOverride?.cardPhase : nil,
+                        activityOverride: phaseOverride?.shelfPhase == nil ? nil : RingPhase.activity(atSlot: relative),
+                        isAccessible: rest.contains(slot.virtualIndex - model.shelfRotation),
+                        rotorNamespace: rotorNamespace, focus: $focusedShelf
+                    )
+                    .modifier(VerticalSlotEffect(slot: relative, geometry: geometry, rest: rest))
+                }
             }
             if configuration.showsShelfSeam {
                 ForEach(slots.filter(\.isSeamOwner)) { slot in

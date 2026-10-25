@@ -72,7 +72,10 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
 
     @ViewBuilder
     private func cards(geometry: RingGeometry) -> some View {
-        let count = state.cards.count
+        // One snapshot for the slots and the cards: SwiftUI can update a card with a slot from the previous pass
+        // before this body runs again, so a card never indexes the live list, which may have shrunk.
+        let cards = state.cards
+        let count = cards.count
         let activeRest = geometry.restWindow(count: count)
         let inactiveRest = geometry.withActivity(0).restWindow(count: count)
         let targetRest = isActive ? activeRest : inactiveRest
@@ -80,32 +83,34 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
         let slots = RingMath.renderSlots(
             itemCount: count, covering: RingPhase.coveredRotations(state.rotationsInFlight, phase: phase),
             rest: RingPhase.union(activeRest, inactiveRest)
-        ) { state.cards[$0].id }
+        ) { cards[$0].id }
         let anchored = phaseOverride.map { Int($0.rounded()) } ?? state.rotation
         ForEach(slots) { slot in
-            let context = ShelfCardContext(
-                isActive: isActive && slot.virtualIndex == anchored, isAnchored: slot.virtualIndex == anchored,
-                isShelfActive: isActive, ringIndex: slot.ringIndex, ringCount: count, faceSize: layout.cardSize
-            )
-            let card = state.cards[slot.ringIndex]
-            ShelfCard(
-                card: card, context: context,
-                showsFocusRing: context.isActive && controller.viewState.hasKeyboardFocus,
-                showsContrastOutline: context.isActive && contrast == .increased
-            )
-            .equatable()
-            .modifier(placement(slot: Double(slot.virtualIndex) - phase, isEmphasized: context.isActive,
-                                geometry: geometry, activeRest: activeRest, inactiveRest: inactiveRest))
-            .modifier(CardPointerInput(
-                isEnabled: isInteractive && targetRest.contains(slot.virtualIndex - state.rotation),
-                actions: controller.handlers.cardActions == nil ? nil : { [controller] in
-                    controller.handlers.cardActions?(card) ?? []
-                }
-            ) { [controller, state, shelfVirtualIndex] in
-                controller.tapCard(
-                    on: state, shelfVirtualIndex: shelfVirtualIndex, cardVirtualIndex: slot.virtualIndex
+            if cards.indices.contains(slot.ringIndex) {
+                let context = ShelfCardContext(
+                    isActive: isActive && slot.virtualIndex == anchored, isAnchored: slot.virtualIndex == anchored,
+                    isShelfActive: isActive, ringIndex: slot.ringIndex, ringCount: count, faceSize: layout.cardSize
                 )
-            })
+                let card = cards[slot.ringIndex]
+                ShelfCard(
+                    card: card, context: context,
+                    showsFocusRing: context.isActive && controller.viewState.hasKeyboardFocus,
+                    showsContrastOutline: context.isActive && contrast == .increased
+                )
+                .equatable()
+                .modifier(placement(slot: Double(slot.virtualIndex) - phase, isEmphasized: context.isActive,
+                                    geometry: geometry, activeRest: activeRest, inactiveRest: inactiveRest))
+                .modifier(CardPointerInput(
+                    isEnabled: isInteractive && targetRest.contains(slot.virtualIndex - state.rotation),
+                    actions: controller.handlers.cardActions == nil ? nil : { [controller] in
+                        controller.handlers.cardActions?(card) ?? []
+                    }
+                ) { [controller, state, shelfVirtualIndex] in
+                    controller.tapCard(
+                        on: state, shelfVirtualIndex: shelfVirtualIndex, cardVirtualIndex: slot.virtualIndex
+                    )
+                })
+            }
         }
         if configuration.showsSeam {
             let barFrame = max(layout.metrics.seamWidth, SeamBar.increasedContrastThickness)

@@ -404,6 +404,7 @@ are parameterized across anchors, ring sizes `N` in {1, 2, 3, 4, 8, 40} and view
 | T18 | `EtagereKeyMap`: arrows → moves in LTR and mirrored in RTL; Return, keypad Enter, Space, K → activate; Esc → exit | R8, R11, D2 |
 | T19 | With `reduceMotion`, the chosen animation is nil and the model state matches the animated path | D6 |
 | T23 | Reuse: a test-only `BoxArtCard` (aspect 0.71, no SwiftUI beyond its face) drives the same model and renders through T22's harness | R4, D1 |
+| T24 | A ring whose list shrinks on screen: in a live hosting view (not `ImageRenderer`, which never reuses a tree), remove the last shelf and cards, then the Active Shelf and its anchored card, in both modes; nothing traps. Each ring indexes the same snapshot of its list that its render slots came from | D8 |
 
 ### 7.2 Host app tests
 
@@ -471,7 +472,7 @@ and unfold without losing the selection.
 | D5 | Code review: faces never play or tune live video |
 | D6 | T19, manual VoiceOver, Reduce Motion, Increase Contrast |
 | D7 | Code review: metrics come from container width only |
-| D8 | T14 |
+| D8 | T14, T24 |
 
 ---
 
