@@ -30,8 +30,8 @@ struct VerticalShelfRing<Card: ShelfCardContent>: View {
         )
         let bump = controller.viewState.shelfBump
         ZStack(alignment: .topLeading) {
-            if !model.shelves.isEmpty {
-                highlight(geometry: geometry)
+            if let active = model.activeShelf {
+                highlight(geometry: geometry, shelf: active)
             }
             shelves(geometry: geometry, rest: rest, phase: phase)
                 .id(key)
@@ -56,17 +56,11 @@ struct VerticalShelfRing<Card: ShelfCardContent>: View {
         }
     }
 
-    private func highlight(geometry: RingGeometry) -> some View {
+    private func highlight(geometry: RingGeometry, shelf: ShelfState<Card>) -> some View {
         let pad = layout.highlightPadding
-        return ActiveShelfHighlight(cornerRadius: layout.highlightCornerRadius)
-            .frame(
-                width: max(0, layout.size.width - layout.leadingInset - layout.trailingInset + 2 * pad.width),
-                height: layout.shelfHeight + 2 * pad.height
-            )
-            .offset(
-                x: layout.leadingInset - pad.width,
-                y: geometry.center(at: 0) - layout.shelfHeight / 2 - pad.height
-            )
+        return ShelfHighlightBand(state: shelf, layout: layout, configuration: controller.model.configuration)
+            .frame(width: layout.size.width, height: layout.shelfHeight + 2 * pad.height)
+            .offset(y: geometry.center(at: 0) - layout.shelfHeight / 2 - pad.height)
     }
 
     private func shelves(geometry: RingGeometry, rest: ClosedRange<Int>, phase: Double) -> some View {
@@ -94,6 +88,8 @@ struct VerticalShelfRing<Card: ShelfCardContent>: View {
                         rotorNamespace: rotorNamespace, focus: $focusedShelf
                     )
                     .modifier(VerticalSlotEffect(slot: relative, geometry: geometry, rest: rest))
+                    // An Active ShelfCard that grows past its shelf draws over its neighbours (D10).
+                    .zIndex(isActive ? 1 : 0)
                 }
             }
             if configuration.showsShelfSeam {

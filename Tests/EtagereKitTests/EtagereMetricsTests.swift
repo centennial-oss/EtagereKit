@@ -17,7 +17,7 @@ nonisolated struct ClassRow: Sendable, CustomTestStringConvertible {
         ClassRow(widthClass: .compact, scale: 1.15, spacing: 14, shelfSpacing: 18, title: .headline, seam: 3),
         ClassRow(widthClass: .medium, scale: 1.25, spacing: 20, shelfSpacing: 24, title: .title3Bold, seam: 3),
         ClassRow(widthClass: .regular, scale: 1.3, spacing: 24, shelfSpacing: 28, title: .title2Bold, seam: 3),
-        ClassRow(widthClass: .television, scale: 1.25, spacing: 40, shelfSpacing: 36, title: .televisionTitle3, seam: 4)
+        ClassRow(widthClass: .television, scale: 1.25, spacing: 40, shelfSpacing: 36, title: .headline, seam: 4)
     ]
 }
 
@@ -111,6 +111,6 @@ struct EtagereMetricsTests {
         #expect(EtagereVerticalAlignment(rawValue: "bottom") == .bottom)
         #expect(EtagereVerticalMode(rawValue: "cursor") == .cursor)
         #expect(EtagereWidthClass(rawValue: "television") == .television)
-        #expect(EtagereTitleStyle.allCases.count == 4)
+        #expect(EtagereTitleStyle.allCases.count == 5)
     }
 }

@@ -12,20 +12,19 @@ struct RingSlotEffect: ViewModifier {
     var slot: Double
     /// 1 when the shelf is active, 0 when not; animates when the selection moves to or from the shelf (§1.9).
     var activity: Double
-    @AnimatableIgnored var geometry: RingGeometry
-    /// The rest window of the active ring and of the inactive ring: they can differ by one slot, and the opacity
-    /// blends between them with `activity`.
-    @AnimatableIgnored var activeRest: ClosedRange<Int>
-    @AnimatableIgnored var inactiveRest: ClosedRange<Int>
+    /// Which card this is: with cards of different widths its place depends on the cards between it and the
+    /// anchor (§1.12).
+    @AnimatableIgnored var virtualIndex: Int
+    /// The geometry, card widths and rest windows of the active and the inactive ring: an inactive ring can show
+    /// one more card than the active one, and the opacity blends between them with `activity`.
+    @AnimatableIgnored var strip: RingStrip
 
     func body(content: Content) -> some View {
-        let ring = geometry.withActivity(activity)
-        let activeOpacity = ring.opacity(at: slot, rest: activeRest)
-        let inactiveOpacity = ring.opacity(at: slot, rest: inactiveRest)
+        let emphasis = strip.geometry.withActivity(activity).emphasis(at: slot)
         content
-            .opacity(inactiveOpacity + (activeOpacity - inactiveOpacity) * activity)
-            .offset(x: ring.center(at: slot) - ring.idleLength / 2)
-            .zIndex(Double(ring.emphasis(at: slot)) * activity)
+            .opacity(strip.opacity(of: virtualIndex, slot: slot, activity: activity))
+            .offset(x: strip.offset(of: virtualIndex, slot: slot, activity: activity))
+            .zIndex(Double(emphasis) * activity)
     }
 }
 
@@ -58,9 +57,8 @@ struct CardEmphasisEffect: ViewModifier {
 struct RingSlotPlacement: ViewModifier {
     var slot: Double
     var activity: Double
-    var geometry: RingGeometry
-    var activeRest: ClosedRange<Int>
-    var inactiveRest: ClosedRange<Int>
+    var virtualIndex: Int
+    var strip: RingStrip
     var idleDim: Double
     var shelfDim: Double
     var scaleAnchor: UnitPoint
@@ -73,16 +71,14 @@ struct RingSlotPlacement: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(CardEmphasisEffect(
-                slot: slot, activity: activity, geometry: geometry, idleDim: idleDim, shelfDim: shelfDim,
+                slot: slot, activity: activity, geometry: strip.geometry, idleDim: idleDim, shelfDim: shelfDim,
                 scaleAnchor: scaleAnchor
             ))
             .id(Self.crossfadeIdentity(isEmphasized: isEmphasized, reduceMotion: reduceMotion))
             .transition(.opacity)
             // The value only changes under Reduce Motion, so otherwise the move's own animation passes through.
             .animation(EtagereCrossfade.reduceMotion, value: reduceMotion ? emphasisKey : nil)
-            .modifier(RingSlotEffect(
-                slot: slot, activity: activity, geometry: geometry, activeRest: activeRest, inactiveRest: inactiveRest
-            ))
+            .modifier(RingSlotEffect(slot: slot, activity: activity, virtualIndex: virtualIndex, strip: strip))
     }
 
     /// The identity of a card's emphasis layer. Under Reduce Motion it follows the emphasis, so gaining or losing

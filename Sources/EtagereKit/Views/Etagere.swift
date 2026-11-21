@@ -67,16 +67,20 @@ public struct Etagere<Card: ShelfCardContent>: View {
         let configuration = model.configuration
         let isTelevision = EtagereWidthClass.platformIsTelevision
         GeometryReader { proxy in
-            let metrics = configuration.metrics.resolved(containerWidth: proxy.size.width)
+            let metrics = configuration.metrics.resolved(
+                containerSize: proxy.size, safeArea: proxy.safeAreaInsets, aspectRatio: Card.faceAspectRatio,
+                titleHeight: measuredTitleHeight, cardCrossAlignment: configuration.cardCrossAlignment
+            )
             let layout = EtagereLayout(
                 size: proxy.size, safeArea: proxy.safeAreaInsets, metrics: metrics,
-                aspectRatio: Card.faceAspectRatio, titleHeight: measuredTitleHeight
+                aspectRatio: Card.faceAspectRatio, titleHeight: measuredTitleHeight,
+                cardCrossAlignment: configuration.cardCrossAlignment
             )
             shelves(layout: layout, mode: configuration.verticalMode)
                 // A different model is a different Etagere: its views observe the new model from scratch.
                 .id(ObjectIdentifier(model))
                 .background {
-                    TitleMeasurer(font: metrics.titleStyle.font) { height in
+                    TitleMeasurer(metrics: metrics) { height in
                         if measuredTitleHeight != height { measuredTitleHeight = height }
                     }
                 }
@@ -115,12 +119,12 @@ public struct Etagere<Card: ShelfCardContent>: View {
 
 /// Measures one line of the shelf title font, so the ShelvesRing knows a shelf's height at any Dynamic Type size.
 private struct TitleMeasurer: View {
-    let font: Font
+    let metrics: EtagereResolvedMetrics
     let onMeasure: (CGFloat) -> Void
 
     var body: some View {
         Text(verbatim: "Ag")
-            .font(font)
+            .shelfTitleFont(metrics)
             .lineLimit(1)
             .fixedSize()
             .hidden()

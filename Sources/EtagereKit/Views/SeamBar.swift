@@ -27,24 +27,21 @@ struct SeamBar: View {
     }
 }
 
-/// Places a card ring's seam bar in the middle of the gap after the last card at `slot`, with that card's
-/// opacity, so it rides and fades with the ring (behavior §1.6). The bar's frame is `barWidth` wide.
+/// Places a card ring's seam bar in the middle of the gap after the last card at `slot` (the copy at
+/// `virtualIndex`), with that card's opacity, so it rides and fades with the ring (behavior §1.6). The bar's frame
+/// is `barWidth` wide.
 @Animatable
 struct SeamEffect: ViewModifier {
     var slot: Double
     var activity: Double
-    @AnimatableIgnored var geometry: RingGeometry
-    @AnimatableIgnored var activeRest: ClosedRange<Int>
-    @AnimatableIgnored var inactiveRest: ClosedRange<Int>
+    @AnimatableIgnored var virtualIndex: Int
+    @AnimatableIgnored var strip: RingStrip
     @AnimatableIgnored var barWidth: CGFloat
 
     func body(content: Content) -> some View {
-        let ring = geometry.withActivity(activity)
-        let activeOpacity = ring.opacity(at: slot, rest: activeRest)
-        let inactiveOpacity = ring.opacity(at: slot, rest: inactiveRest)
         content
-            .opacity(inactiveOpacity + (activeOpacity - inactiveOpacity) * activity)
-            .offset(x: ring.seamCenter(afterSlot: slot) - barWidth / 2)
+            .opacity(strip.opacity(of: virtualIndex, slot: slot, activity: activity))
+            .offset(x: strip.seamCenter(after: virtualIndex, slot: slot, activity: activity) - barWidth / 2)
     }
 }
 

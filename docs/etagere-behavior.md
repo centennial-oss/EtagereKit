@@ -1,7 +1,7 @@
 # EtagereKit behavior: ring geometry, navigation, input and tests
 
 This is the second half of the EtagereKit spec. The first half, [etagere.md](etagere.md), holds
-the terms, the numbered requirements (R1..R29, D1..D8), the generic API, how a host allows only
+the terms, the numbered requirements (R1..R29, D1..D12), the generic API, how a host allows only
 one card type, and the design decisions (Q1..Q8). This half specifies how a
 ShelfRing places, sizes and fades its cards at rest and during animation, the two vertical
 navigation modes, the input mapping on each platform, accessibility, performance, starting
@@ -144,6 +144,14 @@ struct RingSlotEffect: ViewModifier {
 - Every shelf reserves the enlarged card height (`w / aspect * activeScale`), so activating a
   shelf never reflows the page. Cards are centered on the cross axis by default (`.bottom` is
   offered for box art).
+- **Growth reserve (D10).** `activeGrowthReserve` (0...1, default 1) is the part of the growth
+  each ring reserves: `h * (1 + (activeScale - 1) * reserve)` for idle card height `h`. Below 1,
+  inactive rings keep less empty space under their cards and the Active ShelfCard grows past its
+  ring, over the space between shelves, in the direction the cross alignment gives: `.top` grows
+  only downward, `.bottom` only upward (into the title's space first), `.center` half each way.
+  The active shelf draws above its neighbours, the ring's clip leaves room for the overflow, and
+  the Etagere's top and bottom insets grow so the top or bottom shelf's enlarged card stays on
+  screen. The Active Shelf highlight keeps the shelf's reserved size; the card may cover its edge.
 - The `@Animatable` macro compiles on all three platforms (verified), and frames rendered at
   fractional phases through the prototype's `phaseOverride` hook match the math (verified). The
   live per-frame interpolation has not yet been watched in a running app (believed). Check it by
@@ -194,6 +202,45 @@ Geometry is computed in leading-based coordinates and mirrored with `x' = V - x`
 maps physical right to `nextCard` in left-to-right layouts and to `previousCard` in right-to-left
 layouts. The model never knows the direction.
 
+### 1.12 Cards of different widths (D9)
+
+A card's `cardAspectRatio` (nil by default) gives it its own idle width `w_v = h * clamp(ratio,
+0.5, 2.5)`, where `h = w / faceAspectRatio` is the shelf's idle card height; a card without one
+has `w_v = w`. The ratio `w_v / w` is all the geometry needs (`RingWidths`). Every card grows by
+the same factor `g = W / w`, so heights stay the shelf's and `CardEmphasisEffect` is unchanged.
+
+```
+length(v, phase) = w_v * (1 + (g - 1) * emphasis(v - phase))
+anchorCenter(v)  = leading: Lin + g*w_v/2,  center: (Lin + V - Tin)/2,  trailing: V - Tin - g*w_v/2
+r = floor(phase), t = phase - r
+pin       = (1 - t) * anchorCenter(r) + t * anchorCenter(r + 1)
+center(r) = pin - t * (length(r)/2 + p + length(r + 1)/2)
+center(v + 1) = center(v) + length(v)/2 + p + length(v + 1)/2      // and the mirror for v - 1
+```
+
+The anchor point moves from one anchored card's anchor center to the next and divides the
+distance between their centers in proportion `t`; every other card follows with exactly `p`
+between neighbours. With equal widths this is §1.2's `center(s)` (T25 checks it numerically).
+
+- **Rest window.** Depends on the anchored card: the §1.3 rule, counting cards whose near edge
+  is inside the viewport at their own widths. The ring computes it for every rotation in flight
+  (plus one on each side), so a step between two anchored cards of different widths can change
+  the window.
+- **Fades.** Between rotations `r` and `r + 1`, a card in both rest windows is opaque, one only in
+  `r`'s fades out over `fadeLength` slots of travel, one only in `r + 1`'s fades in, others are
+  transparent. With one window for every rotation this is the §1.4 rule.
+- **Render window.** The union of those rest windows around the rotations in flight, plus one
+  transparent slot on each side (§1.5). Widths are read for a window of virtual indices bounded by
+  how many of the narrowest allowed cards fit in the viewport, so the cost still follows the
+  viewport, never `N` (D4).
+- **Seam, ghosts, drags.** The seam sits in the middle of the gap after the last card at its own
+  width; ghost copies are separate virtual indices, so they take their card's width. Drags and
+  scrubs convert points to slots with the mean idle width of the anchored card and the next one,
+  plus `p`.
+- **Uniform rings.** When every card in the window has the shelf's width, the ring stores no
+  widths and uses the uniform functions, so a host that never sets `cardAspectRatio` draws exactly
+  as before. The placeholder card of an empty shelf has the shelf's shape.
+
 ---
 
 ## 2. Vertical navigation
@@ -222,6 +269,12 @@ layouts. The model never knows the direction.
 - **Indicator.** A tinted rounded rectangle (`.tint.opacity(0.12...0.16)`) fixed at the anchor
   slot; shelves slide beneath it. Not Liquid Glass: glass belongs to the floating navigation
   layer (for example the app's sidebar).
+- **Highlight width (D12).** Both modes' highlights span the shelf between the horizontal insets,
+  reaching half an inset past them. When the Active Shelf's cards run past an edge at rest (a card
+  in its rest window starts before the leading inset or ends after the trailing one), the highlight
+  runs past that edge by its corner radius, so its square end meets the edge and the tint follows
+  the cards off screen. A shelf rotation or a new Active Shelf that changes this animates with
+  `highlightAnimation`. `extendsHighlightPastEdges = false` keeps the highlight inside the insets.
 - **Shelf seam.** A horizontal bar between the last and first shelf, by the same rule as §1.6
   (`showsShelfSeam`, Q4).
 - **Input capture (R27).** The Etagere is one focusable element and consumes up, down, left and
@@ -254,7 +307,7 @@ layouts. The model never knows the direction.
   No wrap in mode 2.
 - **Indicator.** One tinted rounded rectangle behind the active shelf with
   `matchedGeometryEffect(id: "activeShelf", in:)`, animated with `highlightAnimation` so it slides
-  up and down (R25).
+  up and down (R25). It spans the shelf as in mode 1, past an edge its cards run past (D12).
 - **Edges and the truncated sentence (R28).** Proposed completion: "...above or below the
   Etagere, up on the top shelf (or down on the bottom shelf) moves focus out of the Etagere to
   those controls; if there are none, the cursor stops at the edge with an 8 pt rubber-band bump
@@ -366,11 +419,38 @@ Chosen from the container width (D7), never from device type.
 | Compact, < 500 pt | `clamp(width * 0.46, 150, 230)` | 1.15 | 14 | 18 | `.headline` |
 | Medium, 500-900 pt | `clamp(width * 0.24, 170, 240)` | 1.25 | 20 | 24 | `.title3.bold()` |
 | Regular, 900-1600 pt | `clamp(width * 0.19, 200, 320)` | 1.3 | 24 | 28 | `.title2.bold()` |
-| tvOS, 1920 pt | 360 | 1.25 | 40 | 36 | tvOS `.title3` |
+| tvOS, 1920 pt | 360 | 1.25 | 40 | 36 | tvOS `.headline` |
 
 Animations: card step `.snappy(0.28)`, repeat linear 60-200 ms, shelf step `.snappy(0.32)`,
 highlight `.snappy(0.3)`. On tvOS read the safe-area insets for the leading inset; do not
 hardcode them.
+
+Each class also starts with a title-to-cards gap (12 pt on tvOS, 6 pt elsewhere), a horizontal
+inset (16, 24 and 32 pt, 48 pt on tvOS; a larger safe area wins) and a growth reserve of 1. A
+host can change all three, and the title style, with `.fixed` metrics (D10). `.callout`, a step
+below `.headline`, is offered for dense layouts; no class starts with it. tvOS started with its
+`.title3` (`.televisionTitle3`, still available) until 2026-11-21, when it proved too large on a
+real screen; it now starts with tvOS's `.headline`.
+
+`titleFontSize` (nil by default) sets the title's point size in place of its style's. The title
+keeps the style's weight (regular for `.callout`, semibold for `.headline`, bold for `.title3Bold`
+and `.title2Bold`, medium on tvOS) and still scales with Dynamic Type relative to the style's text
+style; the "Updating" status beside it is 80% of its size, so it never sets the line's height.
+Until the Etagere measures the title, a point size `s` is estimated at `ceil(1.25 s)`, which gives
+each style's own estimate at its default size. Zero, negative and non-finite sizes count as nil.
+
+### 6.1 Fitting shelves to a height (D10)
+
+The top and bottom insets are `round(shelfSpacing * 0.4) + 4` (the highlight's reach plus 4 pt),
+or the safe area when it is larger, or more when an Active ShelfCard grows past its shelf (§1.7).
+`count` shelves take `topInset + bottomInset + count * shelfHeight + (count - 1) * shelfSpacing`,
+with `shelfHeight = titleHeight + titleSpacing + reservedRingHeight`.
+`EtagereResolvedMetrics.fitting(shelves:in:aspectRatio:...)` returns the largest card width at
+which `count` shelves fill a height, found by bisection on that same layout so it keeps fitting if
+these formulas change; with the default reserve it equals the closed form. `EtagereMetrics.fitting`
+does it inside the Etagere with the title height it measures. In mode 1 with a top anchor the
+fitted shelves are the rest window; a bottom inset larger than the shelf spacing leaves the next
+shelf peeking into it.
 
 ---
 
@@ -405,6 +485,13 @@ are parameterized across anchors, ring sizes `N` in {1, 2, 3, 4, 8, 40} and view
 | T19 | With `reduceMotion`, the chosen animation is nil and the model state matches the animated path | D6 |
 | T23 | Reuse: a test-only `BoxArtCard` (aspect 0.71, no SwiftUI beyond its face) drives the same model and renders through T22's harness | R4, D1 |
 | T24 | A ring whose list shrinks on screen: in a live hosting view (not `ImageRenderer`, which never reuses a tree), remove the last shelf and cards, then the Active Shelf and its anchored card, in both modes; nothing traps. Each ring indexes the same snapshot of its list that its render slots came from | D8 |
+| T25 | Cards of different widths: with equal widths the general slot functions equal §1.2; mixed widths keep the gap at `p` for phases -3...6; at rest the anchored card sits at the Anchor Spot at its enlarged width; positions are continuous across rotations; ratios clamp to 0.5...2.5 and invalid ones keep the shelf's shape; the seam follows the last card's width; a rendered poster card is narrower than its 16:9 neighbours | D9, R6, R12, R18, R20 |
+| T26 | Per-rotation rest windows count cards at their own widths and equal §1.3 for equal widths; fades out of one window and into the next are continuous and equal §1.4 for one window; the widths window is the same for 40 and 10,000 cards | D9, R13, R17, R19, D4 |
+| T27 | Layout knobs: `.callout` and its estimate; per-class title gap and inset, custom ones reaching the layout, the safe area winning; the growth reserve's ring height and clamping; overflow direction by cross alignment and the insets that keep it on screen | D10 |
+| T28 | Fitting: three tvOS shelves fill 1080 pt as the closed form gives and are mode 1's rest window; fitting with a safe area and with a card growing past its ring; edge cases; `EtagereMetrics.fitting` resolves to the helper | D10 |
+| T29 | Context menus: dividers never lead, trail or repeat; VoiceOver's actions skip dividers and Cancel | D11 |
+| T30 | Title point size: the estimate from a point size and the fallback for invalid ones; the rule matching each style's estimate; fitting with a larger title gives smaller cards; a rendered title follows the size, and its status stays smaller | D10 |
+| T31 | Highlight overflow: a long ring runs past the far edge for each anchor and a short one fits; narrow and wide card shapes change it; the highlight's insets inside and past an edge; rendered in both modes, the tint reaches the trailing edge only with overflowing cards and the option on | D12 |
 
 ### 7.2 Host app tests
 
@@ -473,6 +560,10 @@ and unfold without losing the selection.
 | D6 | T19, manual VoiceOver, Reduce Motion, Increase Contrast |
 | D7 | Code review: metrics come from container width only |
 | D8 | T14, T24 |
+| D9 | T25, T26 |
+| D10 | T27, T28, T30 |
+| D11 | T29; manual: the divider in a tvOS long-press menu |
+| D12 | T31 |
 
 ---
 
@@ -496,6 +587,13 @@ The package implements this spec with these differences, each checked during the
 - **Snapshots.** Any `EtagerePhaseOverride` draws mode 2 without its scroll view, because `ImageRenderer` can't draw a scroll view on macOS.
 - **Not built yet:** tvOS swipe-tail logging and the remote bridge's pan and long-press recognizers (the bridge handles presses only).
 - **Seen only in tests so far** (add host-fed controllers, the Play/Pause hook and the tvOS mode 2 edges): the live `@Animatable` interpolation under key repeat, retargeting and settling, the mode 2 highlight and scroll anchoring, trackpad and wheel input, iOS drag inside a scroll view and haptics, controllers, the tvOS remote paths, VoiceOver, Reduce Motion, Increase Contrast and RTL (the manual checks in §7.4).
+- **Host customization (2026-11-21, D9-D12).** Cards may set their own width (§1.12), the layout
+  knobs of §6 and §6.1 are public (the title's point size among them), and context menus take
+  dividers. A divider is drawn with
+  `Divider()`; that it shows as a separator in a tvOS long-press menu is believed, not yet seen on a
+  device. Variable widths are checked by unit and pixel tests; their animation has not been watched
+  in a running app. The Active Shelf highlight follows overflowing cards past the edge (D12) and
+  tvOS titles start at `.headline`; both are checked in rendered frames on macOS, not yet on a TV.
 - **Since then (2026-10-16):** used in a host app on a Mac and a real Apple TV (Siri Remote clicks and swipes, Select through a button, Back to the host) and driven by the host's tvOS UI tests in the simulator. Touch drag inside a scroll view, haptics, hardware keyboards and game controllers still need a check on a real device.
 
 ---

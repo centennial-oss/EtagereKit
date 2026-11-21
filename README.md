@@ -107,6 +107,23 @@ More that the model and view offer:
   returns `true` to keep the press for your app.
 - **Game controllers:** EtagereKit installs no GameController handlers of its own. Forward the
   d-pad, left stick, A and B to an `EtagereGamepad` and attach it with `.etagereGamepad(_:)`.
+- **Cards sized by their artwork:** return a `cardAspectRatio` from your card (a 2:3 poster, a 16:9
+  thumbnail) and it keeps the shelf's height at its own width. Nil keeps the shelf's shape.
+- **Grouping context-menu actions:** put `EtagereAction.divider` between groups. A Cancel action
+  is `EtagereAction("Cancel", role: .cancel) {}`; VoiceOver skips both.
+- **Layout:** with `.fixed` metrics you set the title style (down to `.callout`), the title's point
+  size (`titleFontSize`; it keeps the style's weight and Dynamic Type scaling), the gap under the
+  title (`titleSpacing`), the inset before the first card (`horizontalInset`) and how much room each
+  ring keeps for the enlarged card (`activeGrowthReserve`; below 1 it grows over the gap between
+  shelves). To show a number of shelves at once, let the Etagere size the cards:
+
+  ```swift
+  configuration.metrics = .fitting(shelves: 3, base: .automatic)
+  ```
+
+  or compute it yourself with `metrics.fitting(shelves: 3, in: height, aspectRatio: 16.0 / 9.0)`.
+- **The Active Shelf highlight** runs past the edge of the Etagere when the shelf's cards do. Set
+  `configuration.extendsHighlightPastEdges = false` to keep it inside the insets.
 
 ### Allowing only one card type in an app
 
@@ -125,7 +142,7 @@ isolated conformance.
 
 ## Documentation
 
-- [docs/etagere.md](docs/etagere.md): terms, the numbered requirements (R1–R29, D1–D8), the
+- [docs/etagere.md](docs/etagere.md): terms, the numbered requirements (R1–R29, D1–D12), the
   generic API, configuration and the design decisions.
 - [docs/etagere-behavior.md](docs/etagere-behavior.md): ring geometry and animation, the two
   vertical modes, input on each platform, accessibility, performance, starting metrics and the

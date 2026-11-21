@@ -44,7 +44,7 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
         .contentShape(Rectangle())
         .modifier(ringInput(geometry: geometry))
         .modifier(SeamAnnouncement(lap: lap, isActive: isActive && isInteractive))
-        .clipShape(Rectangle().inset(by: -12))
+        .clipShape(RingClip(horizontal: 12, vertical: 12 + layout.ringOverflow))
     }
 
     private var lap: Int {
@@ -76,20 +76,18 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
         // before this body runs again, so a card never indexes the live list, which may have shrunk.
         let cards = state.cards
         let count = cards.count
-        let activeRest = geometry.restWindow(count: count)
-        let inactiveRest = geometry.withActivity(0).restWindow(count: count)
-        let targetRest = isActive ? activeRest : inactiveRest
         let phase = phaseOverride ?? Double(state.rotation) + dragSlots
-        let slots = RingMath.renderSlots(
-            itemCount: count, covering: RingPhase.coveredRotations(state.rotationsInFlight, phase: phase),
-            rest: RingPhase.union(activeRest, inactiveRest)
-        ) { cards[$0].id }
+        let covered = RingPhase.coveredRotations(state.rotationsInFlight, phase: phase)
+        let strip = strip(geometry: geometry, cards: cards, covering: covered)
+        let targetRest = strip.restWindow(at: state.rotation, isActive: isActive)
+        let slots = RingMath.renderSlots(itemCount: count, covering: covered, rest: strip.renderRest) { cards[$0].id }
         let anchored = phaseOverride.map { Int($0.rounded()) } ?? state.rotation
         ForEach(slots) { slot in
             if cards.indices.contains(slot.ringIndex) {
+                let faceSize = CGSize(width: strip.idleWidth(of: slot.virtualIndex), height: layout.cardSize.height)
                 let context = ShelfCardContext(
                     isActive: isActive && slot.virtualIndex == anchored, isAnchored: slot.virtualIndex == anchored,
-                    isShelfActive: isActive, ringIndex: slot.ringIndex, ringCount: count, faceSize: layout.cardSize
+                    isShelfActive: isActive, ringIndex: slot.ringIndex, ringCount: count, faceSize: faceSize
                 )
                 let card = cards[slot.ringIndex]
                 ShelfCard(
@@ -98,8 +96,8 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
                     showsContrastOutline: context.isActive && contrast == .increased
                 )
                 .equatable()
-                .modifier(placement(slot: Double(slot.virtualIndex) - phase, isEmphasized: context.isActive,
-                                    geometry: geometry, activeRest: activeRest, inactiveRest: inactiveRest))
+                .modifier(placement(slot: Double(slot.virtualIndex) - phase, virtualIndex: slot.virtualIndex,
+                                    isEmphasized: context.isActive, strip: strip))
                 .modifier(CardPointerInput(
                     isEnabled: isInteractive && targetRest.contains(slot.virtualIndex - state.rotation),
                     actions: controller.handlers.cardActions == nil ? nil : { [controller] in
@@ -118,8 +116,8 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
                 SeamBar(axis: .vertical, length: layout.cardSize.height * 0.8, thickness: layout.metrics.seamWidth)
                     .frame(width: barFrame, height: layout.cardSize.height)
                     .modifier(SeamEffect(
-                        slot: Double(slot.virtualIndex) - phase, activity: activity, geometry: geometry,
-                        activeRest: activeRest, inactiveRest: inactiveRest, barWidth: barFrame
+                        slot: Double(slot.virtualIndex) - phase, activity: activity,
+                        virtualIndex: slot.virtualIndex, strip: strip, barWidth: barFrame
                     ))
             }
         }
@@ -134,9 +132,7 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
             showsContrastOutline: isActive && contrast == .increased
         )
         .equatable()
-        .modifier(placement(
-            slot: 0, isEmphasized: isActive, geometry: geometry, activeRest: 0...0, inactiveRest: 0...0
-        ))
+        .modifier(placement(slot: 0, virtualIndex: 0, isEmphasized: isActive, strip: .placeholder(geometry: geometry)))
         .modifier(CardPointerInput(
             isEnabled: isInteractive,
             actions: controller.handlers.emptyShelfActions == nil ? nil : { [controller, id = state.id] in
@@ -147,12 +143,18 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
         })
     }
 
+    /// The card widths and rest windows around the rotations in flight (behavior §1.12).
+    private func strip(geometry: RingGeometry, cards: [Card], covering rotations: ClosedRange<Int>) -> RingStrip {
+        RingStrip(
+            geometry: geometry, cardSize: layout.cardSize, itemCount: cards.count, covering: rotations
+        ) { cards[$0].cardAspectRatio }
+    }
+
     private func placement(
-        slot: Double, isEmphasized: Bool, geometry: RingGeometry, activeRest: ClosedRange<Int>,
-        inactiveRest: ClosedRange<Int>
+        slot: Double, virtualIndex: Int, isEmphasized: Bool, strip: RingStrip
     ) -> RingSlotPlacement {
         RingSlotPlacement(
-            slot: slot, activity: activity, geometry: geometry, activeRest: activeRest, inactiveRest: inactiveRest,
+            slot: slot, activity: activity, virtualIndex: virtualIndex, strip: strip,
             idleDim: configuration.idleDim, shelfDim: configuration.inactiveShelfDim,
             scaleAnchor: configuration.cardCrossAlignment.scaleAnchor, emphasisKey: emphasisKey,
             isEmphasized: isEmphasized, reduceMotion: reduceMotion
@@ -161,9 +163,16 @@ struct ShelfRingView<Card: ShelfCardContent>: View {
 
     // MARK: Drags, scrubs and haptics
 
+    /// Drags and scrubs move one slot per the anchored card's step (behavior §1.12).
     private func ringInput(geometry: RingGeometry) -> RingInput<Card> {
-        RingInput(
-            controller: controller, state: state, step: geometry.step,
+        let cards = state.cards
+        let rotation = state.rotation
+        let widths = cards.isEmpty ? RingWidths.uniform : RingWidths.window(rotation...(rotation + 1)) { index in
+            let card = cards[RingMath.floorMod(index, cards.count)]
+            return RingWidths.widthRatio(cardAspectRatio: card.cardAspectRatio, cardSize: layout.cardSize)
+        }
+        return RingInput(
+            controller: controller, state: state, step: geometry.dragStep(at: rotation, widths: widths),
             isRightToLeft: layoutDirection == .rightToLeft, isEnabled: isInteractive,
             dragSlots: $dragSlots
         )

@@ -4,7 +4,7 @@ EtagereKit is a reusable SwiftUI navigation component for Apple platforms: a ver
 shelves (the Etagere), each holding a flat, circular, horizontally rotating row of cards (the
 ShelfRing). The selected card on each shelf stays at a fixed Anchor Spot and the ring turns
 around it. This document lists every requirement as a numbered item (R1..R29, plus derived items
-D1..D8) so code and tests can trace them, then specifies the package, the generic API, how a host
+D1..D12) so code and tests can trace them, then specifies the package, the generic API, how a host
 app restricts its shelves to one card type, and the design decisions (Q1..Q8). The companion
 document [etagere-behavior.md](etagere-behavior.md) specifies the ring geometry and animation
 rules, the two vertical navigation modes, input per platform, accessibility, performance, metrics
@@ -139,6 +139,25 @@ maps every requirement to tests.
 - **D7. Layout from container size**, never device idiom or orientation (iPhone Duo, Split View).
 - **D8. Content refresh keeps the selection.** Reloading a shelf's content (for example a channel
   lineup) does not move the anchored card.
+- **D9. Cards sized by their artwork.** A card may have its own shape (`cardAspectRatio`): every
+  card keeps the shelf's idle and active heights, and its width is that height times its ratio,
+  clamped to 0.5...2.5, so a 2:3 poster is a narrow card and a 16:9 thumbnail a wide one. A card
+  without one keeps the shelf's shape. Positions, the constant gap, the rest window, the fades,
+  the seam and ghost copies all follow each card's width ([etagere-behavior.md](etagere-behavior.md)
+  §1.12). Added 2026-11-21 for a host's library grid.
+- **D10. Host-tunable layout.** A host sets the sizes it would otherwise copy from EtagereKit's
+  internals: the title style (down to `.callout`) and its point size, the title-to-cards gap, the
+  horizontal inset,
+  how much of the Active ShelfCard's growth each ring reserves, and a card width that fits a
+  number of shelves to the Etagere's height (behavior §1.7, §6). The defaults stay as before.
+  Added 2026-11-21.
+- **D11. Grouped context menus.** `EtagereAction.divider` separates groups of actions in the
+  context menu. VoiceOver's named actions skip dividers and Cancel-role actions. Added 2026-11-21.
+- **D12. The highlight follows overflowing cards.** When the Active Shelf's cards run past the
+  leading or trailing edge of the Etagere at rest, its highlight runs past that edge with them
+  instead of ending at the horizontal inset, so the tint never stops short of cards that are still
+  drawn. On by default (`extendsHighlightPastEdges`); a shelf whose cards all fit keeps the
+  highlight inside the insets. Added 2026-11-21 after the tint ended short of a tvOS shelf's cards.
 
 ---
 
@@ -155,8 +174,9 @@ maps every requirement to tests.
 Package.swift
 Sources/EtagereKit/
   Model/     ShelfCardContent.swift  Shelf.swift  ShelfState.swift  EtagereModel.swift  EtagereModelContent.swift
-             RingFlights.swift  EtagereConfiguration.swift  EtagereMetrics.swift  EtagereIntent.swift
-  Geometry/  RingGeometry.swift  RingSlots.swift          (pure, nonisolated, fully unit tested)
+             RingFlights.swift  EtagereConfiguration.swift  EtagereMetrics.swift  EtagereMetricsFitting.swift
+             EtagereIntent.swift
+  Geometry/  RingGeometry.swift  RingSlots.swift  RingStrip.swift   (pure, nonisolated, fully unit tested)
   Views/     ShelfCard.swift  ShelfRingView.swift  ShelfRowView.swift  RingSlotEffect.swift  SeamBar.swift
              VerticalShelfRing.swift  CursorEtagere.swift  Etagere.swift  EtagereAction.swift
              EtagereController.swift  EtagereLayout.swift  ActiveShelfHighlight.swift
@@ -207,6 +227,7 @@ public nonisolated struct ShelfCardContext: Sendable, Equatable {
 public protocol ShelfCardContent: Identifiable, Equatable, Sendable where ID: Sendable {
     associatedtype Face: View
     static var faceAspectRatio: CGFloat { get }     // default 16:9; about 0.71 for box art
+    var cardAspectRatio: CGFloat? { get }           // default nil: the shelf's shape (D9)
     var accessibilityTitle: String { get }
     @MainActor @ViewBuilder func makeFace(context: ShelfCardContext) -> Face
 }
@@ -251,8 +272,9 @@ public struct Etagere<Card: ShelfCardContent>: View {
                 onActivate: @escaping (Card) -> Void,   // "go" on the Active ShelfCard
                 onExit: @escaping () -> Void)           // Back / Menu / Esc: the host moves focus
 }
-// Optional modifiers: .etagereContextMenu { card in ... } and, for mode 2,
-// .onEtagereEdge { edge in ... } which moves focus to a control above or below (behavior §2.2).
+// Optional modifiers: .etagereContextMenu { card in ... } (EtagereAction.divider groups its actions,
+// D11) and, for mode 2, .onEtagereEdge { edge in ... } which moves focus to a control above or
+// below (behavior §2.2).
 ```
 
 `ShelfCard<Content>` is the chrome around a face: idle size, continuous corner shape and
@@ -272,17 +294,36 @@ public nonisolated struct EtagereConfiguration: Sendable, Equatable {
     public var horizontalAlignment: EtagereHorizontalAlignment = .leading   // R6, R16
     public var verticalAlignment: EtagereVerticalAlignment = .top           // R23
     public var verticalMode: EtagereVerticalMode = .ring                    // R21
-    public var metrics: EtagereMetrics = .regular       // sizes and spacing (behavior §6)
+    public var metrics: EtagereMetrics = .automatic     // sizes and spacing (behavior §6)
     public var cardCrossAlignment: ShelfCardCrossAlignment = .center        // .bottom for box art
     public var idleDim = 0.12            // brightness drop for non-active cards on the active shelf
     public var inactiveShelfDim = 0.15   // extra drop for every card on other shelves
     public var showsSeam = true          // R20
+    public var extendsHighlightPastEdges = true   // D12: the highlight follows cards past an edge
     public var showsShelfSeam = true     // mode 1 bar between the last and first shelf (Q4)
     public var fadeLengthInSlots = 1.0   // R17; clamped to 0.25...1 (behavior §1.4, Q1)
     public var stepAnimation: Animation = .snappy(duration: 0.28)
     public var repeatAnimation: Animation = .linear(duration: 0.12)   // retimed to the repeat rate
     public var shelfStepAnimation: Animation = .snappy(duration: 0.32)
     public var highlightAnimation: Animation = .snappy(duration: 0.3)
+}
+```
+
+`EtagereMetrics` is `.automatic` (the width class's starting metrics), `.widthClass(_)`,
+`.fixed(EtagereResolvedMetrics)` or `.fitting(shelves:base:)`, which takes `base`'s sizes and
+picks the card width at which that many shelves fill the Etagere's height (behavior §6.1). The
+resolved metrics hold, besides the table in behavior §6, the knobs of D10:
+
+```swift
+public nonisolated struct EtagereResolvedMetrics: Sendable, Hashable {
+    // widthClass, cardWidth, activeScale, cardSpacing, shelfSpacing, titleStyle, seamWidth (§6)
+    public var titleFontSize: CGFloat?        // nil: the title style's size; scales with Dynamic Type
+    public var titleSpacing: CGFloat          // title-to-cards gap: 12 on tvOS, 6 elsewhere
+    public var horizontalInset: CGFloat       // 16 / 24 / 32, 48 on tvOS; a larger safe area wins
+    public var activeGrowthReserve: CGFloat   // 1: rings reserve the enlarged height (behavior §1.7)
+    public func fitting(shelves: Int, in height: CGFloat, aspectRatio: CGFloat,
+                        titleHeight: CGFloat? = nil, safeArea: EdgeInsets = EdgeInsets(),
+                        cardCrossAlignment: ShelfCardCrossAlignment = .center) -> EtagereResolvedMetrics
 }
 ```
 

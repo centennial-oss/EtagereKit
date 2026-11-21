@@ -62,6 +62,10 @@ public nonisolated struct EtagereConfiguration: Sendable, Equatable {
     public var idleDim = 0.12
     /// Extra brightness drop for every card on the other shelves.
     public var inactiveShelfDim = 0.15
+    /// When the Active Shelf's cards run past the leading or trailing edge of the Etagere at rest, its highlight
+    /// runs past that edge with them instead of ending at the horizontal inset (D12). On by default; a shelf whose
+    /// cards all fit keeps the highlight inside the insets either way.
+    public var extendsHighlightPastEdges = true
     /// The bar between each ring's last and first card (R20).
     public var showsSeam = true
     /// The bar between the last and the first shelf in mode 1 (Q4: on by default).

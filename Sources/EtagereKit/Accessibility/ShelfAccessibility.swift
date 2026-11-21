@@ -75,7 +75,7 @@ struct ShelfAccessibility<Card: ShelfCardContent>: ViewModifier {
                 controller.activate(shelfVirtualIndex: shelfVirtualIndex)
             }
             .accessibilityActions {
-                EtagereActionMenu(actions: controller.handlers.actions(for: activation))
+                EtagereActionMenu(actions: controller.handlers.actions(for: activation), isAccessibility: true)
             }
             .modifier(VoiceOverFocus(focus: focus, shelfID: state.id))
             .accessibilityRotorEntry(id: state.id, in: rotorNamespace)
@@ -151,7 +151,9 @@ private struct ActiveShelfSummary<Card: ShelfCardContent>: ViewModifier {
                 controller.activate()
             }
             .accessibilityActions {
-                EtagereActionMenu(actions: controller.handlers.actions(for: controller.model.activation))
+                EtagereActionMenu(
+                    actions: controller.handlers.actions(for: controller.model.activation), isAccessibility: true
+                )
             }
     }
 }

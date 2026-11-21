@@ -82,7 +82,7 @@ struct CursorEtagere<Card: ShelfCardContent>: View {
         .background {
             ZStack {
                 if isActive {
-                    highlight(index: index)
+                    highlight(index: index, shelf: shelf, configuration: configuration)
                 }
             }
             // Under Reduce Motion only the highlight crossfades; the value never changes otherwise, so the
@@ -93,16 +93,17 @@ struct CursorEtagere<Card: ShelfCardContent>: View {
             controller: controller, shelfID: shelf.id, focus: $focusedRow,
             edges: Self.edges(ofRow: index, count: controller.model.shelves.count)
         ))
+        // An Active ShelfCard that grows past its shelf draws over its neighbours (D10).
+        .zIndex(isActive ? 1 : 0)
     }
 
     /// One highlight that slides between rows with `highlightAnimation` through `matchedGeometryEffect`; under
     /// Reduce Motion each row's highlight has its own identity, so it crossfades instead (behavior §4).
-    private func highlight(index: Int) -> some View {
-        let pad = layout.highlightPadding
-        return ActiveShelfHighlight(cornerRadius: layout.highlightCornerRadius)
-            .padding(.vertical, -pad.height)
-            .padding(.leading, layout.leadingInset - pad.width)
-            .padding(.trailing, layout.trailingInset - pad.width)
+    private func highlight(
+        index: Int, shelf: ShelfState<Card>, configuration: EtagereConfiguration
+    ) -> some View {
+        ShelfHighlightBand(state: shelf, layout: layout, configuration: configuration)
+            .padding(.vertical, -layout.highlightPadding.height)
             .matchedGeometryEffect(id: reduceMotion ? "activeShelf-\(index)" : "activeShelf", in: highlightNamespace)
             .transition(.opacity)
     }

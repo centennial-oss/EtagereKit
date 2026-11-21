@@ -19,7 +19,7 @@ struct ShelfRowView<Card: ShelfCardContent>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: layout.titleSpacing) {
-            ShelfTitle(state: state, isActive: isActive, style: layout.metrics.titleStyle)
+            ShelfTitle(state: state, isActive: isActive, metrics: layout.metrics)
                 .frame(maxWidth: .infinity, minHeight: layout.titleHeight, alignment: .bottomLeading)
                 .padding(.leading, layout.leadingInset)
                 .padding(.trailing, layout.trailingInset)
@@ -49,17 +49,17 @@ struct ShelfRowView<Card: ShelfCardContent>: View {
 private struct ShelfTitle<Card: ShelfCardContent>: View {
     let state: ShelfState<Card>
     let isActive: Bool
-    let style: EtagereTitleStyle
+    let metrics: EtagereResolvedMetrics
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(state.title)
-                .font(style.font)
+                .shelfTitleFont(metrics)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .lineLimit(1)
             if state.isUpdating {
                 Text(ShelfAccessibilityText.updating)
-                    .font(style.statusFont)
+                    .shelfTitleFont(metrics, isStatus: true)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .fixedSize()

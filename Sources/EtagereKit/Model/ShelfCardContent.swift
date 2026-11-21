@@ -10,7 +10,8 @@ public nonisolated struct ShelfCardContext: Sendable, Equatable {
     public var isShelfActive: Bool
     public var ringIndex: Int
     public var ringCount: Int
-    /// The idle face size; the ring scales the Active ShelfCard up from it.
+    /// The idle face size; the ring scales the Active ShelfCard up from it. Its width follows the card's own
+    /// `cardAspectRatio` when it has one.
     public var faceSize: CGSize
 
     public init(
@@ -47,8 +48,14 @@ public nonisolated struct ShelfCardContext: Sendable, Equatable {
 public nonisolated protocol ShelfCardContent: Identifiable, Equatable, Sendable where ID: Sendable {
     associatedtype Face: View
 
-    /// The face's width / height: 16:9 for video by default, about 0.71 for box art.
+    /// The face's width / height: 16:9 for video by default, about 0.71 for box art. It sets the shelf's shape:
+    /// its idle card height (`cardWidth / faceAspectRatio`) and the width of every card without its own shape.
     static var faceAspectRatio: CGFloat { get }
+
+    /// This card's own width / height, for a card sized by its artwork (D9, behavior §1.12): a 2:3 movie poster
+    /// makes a narrow card and a 16:9 thumbnail a wide one. Every card keeps the shelf's idle and active heights;
+    /// its width is that height times this ratio, clamped to 0.5...2.5. Nil, the default, keeps the shelf's shape.
+    var cardAspectRatio: CGFloat? { get }
 
     /// A full phrase for VoiceOver, for example "KUSA 9.1, NBC, live now, favorite".
     var accessibilityTitle: String { get }
@@ -59,4 +66,6 @@ public nonisolated protocol ShelfCardContent: Identifiable, Equatable, Sendable 
 
 nonisolated extension ShelfCardContent {
     public static var faceAspectRatio: CGFloat { 16.0 / 9.0 }
+
+    public var cardAspectRatio: CGFloat? { nil }
 }

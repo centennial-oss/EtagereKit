@@ -138,16 +138,24 @@ public nonisolated struct RingGeometry: Sendable, Equatable {
     /// an item twice (R19). A leading anchor shows nothing before the anchor (that side is the exit side), a
     /// trailing anchor nothing after it, and a center anchor gives the extra item to the "next" side.
     public func restWindow(count: Int) -> ClosedRange<Int> {
-        let others = max(count - 1, 0)
+        Self.restWindow(
+            others: max(count - 1, 0), fittingAfter: slotsFittingAfter, fittingBefore: slotsFittingBefore,
+            anchor: anchor
+        )
+    }
+
+    /// The rest window rule for `others` items besides the anchored one, of which `fittingAfter` and
+    /// `fittingBefore` would be at least partly inside the viewport.
+    static func restWindow(others: Int, fittingAfter: Int, fittingBefore: Int, anchor: RingAnchor) -> ClosedRange<Int> {
         switch anchor {
         case .leading:
-            return 0...min(others, slotsFittingAfter)
+            return 0...min(others, fittingAfter)
         case .trailing:
-            return -min(others, slotsFittingBefore)...0
+            return -min(others, fittingBefore)...0
         case .center:
-            var after = min(slotsFittingAfter, (others + 1) / 2)
-            let before = min(slotsFittingBefore, others - after)
-            after = min(slotsFittingAfter, others - before)
+            var after = min(fittingAfter, (others + 1) / 2)
+            let before = min(fittingBefore, others - after)
+            after = min(fittingAfter, others - before)
             return -before...after
         }
     }

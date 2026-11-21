@@ -16,32 +16,55 @@ nonisolated struct EtagereLayout: Equatable, Sendable {
     /// The shelf title's line height, measured once for the current Dynamic Type size.
     var titleHeight: CGFloat
     var titleSpacing: CGFloat
+    /// How far the enlarged Active ShelfCard reaches above and below its ring's reserved height (D10): zero
+    /// unless `activeGrowthReserve` is below 1.
+    var overflowAbove: CGFloat
+    var overflowBelow: CGFloat
 
     init(
         size: CGSize, safeArea: EdgeInsets, metrics: EtagereResolvedMetrics, aspectRatio: CGFloat,
-        titleHeight: CGFloat?
+        titleHeight: CGFloat?, cardCrossAlignment: ShelfCardCrossAlignment = .center
     ) {
         self.size = size
         self.metrics = metrics
         self.aspectRatio = aspectRatio
-        let horizontal = Self.horizontalInset(for: metrics)
-        leadingInset = max(safeArea.leading, horizontal)
-        trailingInset = max(safeArea.trailing, horizontal)
-        let vertical = Self.highlightPadding(for: metrics).height + 4
-        topInset = max(safeArea.top, vertical)
-        bottomInset = max(safeArea.bottom, vertical)
-        self.titleHeight = titleHeight ?? Self.estimatedTitleHeight(for: metrics.titleStyle)
-        titleSpacing = metrics.widthClass == .television ? 12 : 6
+        leadingInset = max(safeArea.leading, metrics.horizontalInset)
+        trailingInset = max(safeArea.trailing, metrics.horizontalInset)
+        let title = titleHeight ?? metrics.estimatedTitleHeight
+        self.titleHeight = title
+        titleSpacing = metrics.titleSpacing
+        let overflow = metrics.activeOverflow(aspectRatio: aspectRatio)
+        switch cardCrossAlignment {
+        case .top: (overflowAbove, overflowBelow) = (0, overflow)
+        case .center: (overflowAbove, overflowBelow) = (overflow / 2, overflow / 2)
+        case .bottom: (overflowAbove, overflowBelow) = (overflow, 0)
+        }
+        // The insets keep the highlight inside the Etagere, and a card that grows past its shelf (above the
+        // title, or below the ring) inside it too, so the top or bottom shelf's enlarged card is never clipped.
+        let padding = metrics.highlightVerticalPadding
+        let pastTitle = max(0, overflowAbove - title - metrics.titleSpacing)
+        topInset = max(safeArea.top, max(padding, pastTitle) + 4)
+        bottomInset = max(safeArea.bottom, max(padding, overflowBelow) + 4)
     }
 
     /// The idle card face size.
     var cardSize: CGSize { CGSize(width: metrics.cardWidth, height: metrics.cardHeight(aspectRatio: aspectRatio)) }
 
-    /// The height every ring reserves: the enlarged card's height, so activating a shelf never reflows (§1.7).
+    /// The height every ring reserves: by default the enlarged card's height, so activating a shelf never reflows
+    /// (§1.7).
     var ringHeight: CGFloat { metrics.reservedRingHeight(aspectRatio: aspectRatio) }
+
+    /// The larger of the two overflows: how far a ring must let its Active ShelfCard draw past its frame.
+    var ringOverflow: CGFloat { max(overflowAbove, overflowBelow) }
 
     /// One shelf: its title, the gap below it and its ring.
     var shelfHeight: CGFloat { titleHeight + titleSpacing + ringHeight }
+
+    /// The height `count` shelves take with the insets around them (behavior §6.1).
+    func height(ofShelves count: Int) -> CGFloat {
+        let shelves = CGFloat(max(count, 0))
+        return topInset + bottomInset + shelves * shelfHeight + max(shelves - 1, 0) * metrics.shelfSpacing
+    }
 
     /// How far the Active Shelf highlight reaches around a shelf.
     var highlightPadding: CGSize { Self.highlightPadding(for: metrics) }
@@ -68,26 +91,27 @@ nonisolated struct EtagereLayout: Equatable, Sendable {
 
     /// The inset before the Anchor Spot when there is no larger safe area.
     static func horizontalInset(for metrics: EtagereResolvedMetrics) -> CGFloat {
-        switch metrics.widthClass {
-        case .compact: 16
-        case .medium: 24
-        case .regular: 32
-        case .television: 48
-        }
+        metrics.horizontalInset
     }
 
     static func highlightPadding(for metrics: EtagereResolvedMetrics) -> CGSize {
-        CGSize(width: horizontalInset(for: metrics) / 2, height: (metrics.shelfSpacing * 0.4).rounded())
+        CGSize(width: metrics.horizontalInset / 2, height: metrics.highlightVerticalPadding)
     }
 
     /// A starting title height used until the real one is measured (and by single-pass renders).
     static func estimatedTitleHeight(for style: EtagereTitleStyle) -> CGFloat {
-        #if os(macOS)
-        let heights: [EtagereTitleStyle: CGFloat] = [.headline: 16, .title3Bold: 19, .title2Bold: 22]
-        #else
-        let heights: [EtagereTitleStyle: CGFloat] = [.headline: 22, .title3Bold: 25, .title2Bold: 28]
-        #endif
-        return heights[style] ?? 58
+        style.estimatedHeight
+    }
+}
+
+/// The clip around a ShelfRing: a little room on each side for the focus ring, and above and below for an Active
+/// ShelfCard that grows past its ring (D10).
+nonisolated struct RingClip: Shape {
+    var horizontal: CGFloat
+    var vertical: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: -horizontal, dy: -vertical))
     }
 }
 
