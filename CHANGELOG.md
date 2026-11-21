@@ -3,7 +3,7 @@
 EtagereKit follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may
 change the API.
 
-## 0.2.0 (unreleased)
+## 0.2.0
 
 What a host needs to fit the Etagere to its own layouts, without copying EtagereKit's internals.
 
